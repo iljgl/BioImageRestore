@@ -3,17 +3,31 @@ package org.DenoiseStorm.deconvolution;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.ImageStack;
-import ij.gui.GenericDialog;
 import ij.plugin.PlugIn;
 import ij.process.ImageProcessor;
 import ij.process.ShortProcessor;
 import org.DenoiseStorm.deconvolution.core.DeconvolutionCore;
 import org.DenoiseStorm.deconvolution.core.PSFGenerator;
+import org.DenoiseStorm.help.HelpBrowser;
+import org.DenoiseStorm.help.HelpPages;
+import org.DenoiseStorm.help.DeconvolutionHelpPages;
+
+import javax.swing.*;
+import javax.swing.border.TitledBorder;
+
+import java.awt.*;
+import java.awt.event.ActionEvent;
 
 /**
- * ImageJ plugin for iterative deconvolution.
- * Supports both Richardson-Lucy (Poisson) and Accelerated Landweber (Gaussian).
- * Generates PSF from optical parameters and outputs both deconvolved image and PSF.
+ * ImageJ plugin for iterative deconvolution with a ThunderSTORM-style
+ * Swing parameter dialog.
+ *
+ * <p>The dialog contains three logical groups:
+ * <ul>
+ *   <li>recA: Optical parameters used to generate the theoretical PSF</li>
+ *   <li>recB: Choice of deconvolution algorithm</li>
+ *   <li>recC: Optional output of the computed PSF image</li>
+ * </ul>
  */
 public class Deconvolution_Plugin implements PlugIn {
 
@@ -23,75 +37,276 @@ public class Deconvolution_Plugin implements PlugIn {
     private static final String ALGO_RL = "Richardson-Lucy (Poisson)";
     private static final String ALGO_LW = "Accelerated Landweber (Gaussian)";
 
+    private static final HelpPages HELP = new DeconvolutionHelpPages();
+    private static final Color HELP_BUTTON_BLUE = new Color(0, 102, 204);
+    private static final Color GROUP_BORDER_COLOR = new Color(128, 128, 128, 150);
+
+    /** Holder for dialog results; null if the user cancels. */
+    private static class Parameters {
+        double exWavelength;
+        double numericalAperture;
+        double pixelSize;
+        int iterations;
+        int algorithmRule;      // 1 = RL (Poisson), 2 = LW (Gaussian)
+        boolean showPsf;
+    }
+
     @Override
-    public void run(String s) {
+    public void run(String arg) {
         ImagePlus imp = IJ.getImage();
         if (imp == null) {
             IJ.noImage();
             return;
         }
 
-        // --- 1. Parameter dialog ---
-        GenericDialog gd = new GenericDialog("Deconvolution Parameters");
-        gd.addMessage("Iterative Deconvolution with theoretical PSF");
-        gd.addNumericField("EX wavelength lambda (μm):", 0.561, 3);
-        gd.addNumericField("Numerical Aperture NA:", 1.49, 2);
-        gd.addNumericField("Pixel size (μm):", 0.0433, 4);
-        gd.addNumericField("Iterations:", 10, 0);
+        Parameters parameters = showSwingDialog(imp);
+        if (parameters == null) {
+            return;
+        }
 
-        gd.addMessage("Algorithm selection:");
-        gd.addRadioButtonGroup("Algorithm:",
-                new String[]{ALGO_RL, ALGO_LW},
-                2, 1,
-                ALGO_RL);
-        gd.addCheckbox("Dispaly PSF?", false);
-        gd.showDialog();
-        if (gd.wasCanceled()) return;
-
-        double lambda = gd.getNextNumber();
-        double NA = gd.getNextNumber();
-        double pixel = gd.getNextNumber();
-        int iteration = (int) gd.getNextNumber();
-
-        String selectedAlgo = gd.getNextRadioButton();
-        boolean ShowPSF = gd.getNextBoolean();
-        int rule = ALGO_RL.equals(selectedAlgo) ? 1 : 2;
-
-        String suffix = (rule == 1) ? "_DeconvPoisson" : "_DeconvGaussian";
-
-        // --- 2. Generate PSF and display it ---
+        // --- Generate PSF (and display it if requested) ---
         IJ.showStatus("Generating PSF...");
-        double[][] psf = PSFGenerator.generate(pixel, lambda, NA, Z_DEFOCUS, R_CUTOFF);
-        if (ShowPSF){
-            displayPSF(psf, lambda, NA, pixel);}
+        double[][] psf = PSFGenerator.generate(
+                parameters.pixelSize,
+                parameters.exWavelength,
+                parameters.numericalAperture,
+                Z_DEFOCUS,
+                R_CUTOFF);
 
-        // --- 3. Check for time series ---
+        if (parameters.showPsf) {
+            displayPSF(psf, parameters.exWavelength,
+                    parameters.numericalAperture, parameters.pixelSize);
+        }
+
+        // --- Check for time series ---
         int numFrames = imp.getStackSize();
         boolean processAllFrames = false;
 
         if (numFrames > 1) {
-            GenericDialog frameDialog = new GenericDialog("Process Frames");
-            frameDialog.addMessage("This is a time-series image with " + numFrames + " frames.");
-            frameDialog.addCheckbox("Process all frames?", true);
-            frameDialog.showDialog();
-            if (frameDialog.wasCanceled()) return;
-            processAllFrames = frameDialog.getNextBoolean();
+            int answer = JOptionPane.showConfirmDialog(
+                    null,
+                    "This is a time-series image with " + numFrames + " frames.\n"
+                            + "Process all frames?",
+                    "Process Frames",
+                    JOptionPane.YES_NO_OPTION);
+            if (answer == JOptionPane.CLOSED_OPTION) {
+                return;
+            }
+            processAllFrames = (answer == JOptionPane.YES_OPTION);
         }
 
-        // --- 4. Process image(s) ---
-        ImagePlus resultImp;
+        String suffix = (parameters.algorithmRule == 1)
+                ? "_DeconvPoisson" : "_DeconvGaussian";
 
+        ImagePlus resultImp;
         if (processAllFrames) {
-            resultImp = processAllFrames(imp, psf, iteration, rule, suffix);
+            resultImp = processAllFrames(
+                    imp,
+                    psf,
+                    parameters.iterations,
+                    parameters.algorithmRule,
+                    suffix);
         } else {
-            resultImp = processSingleFrame(imp, psf, iteration, rule, suffix);
+            resultImp = processSingleFrame(
+                    imp,
+                    psf,
+                    parameters.iterations,
+                    parameters.algorithmRule,
+                    suffix);
         }
 
         resultImp.show();
         IJ.showStatus("Deconvolution Complete");
     }
 
-    // --- Single frame processing ---
+    // ------------------------------------------------------------------
+    //  Swing parameter dialog
+    // ------------------------------------------------------------------
+
+    private Parameters showSwingDialog(ImagePlus imp) {
+        JDialog dialog = new JDialog((Frame) null, "Deconvolution Parameters", true);
+        try {
+            dialog.setIconImage(IJ.getInstance().getIconImage());
+        } catch (Exception ignored) {
+            // Keep the default icon if ImageJ's icon is unavailable.
+        }
+
+        JPanel root = new JPanel();
+        root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JTextField exWavelengthField = new JTextField("0.561", 8);
+        JTextField numericalApertureField = new JTextField("1.49", 8);
+        JTextField pixelSizeField = new JTextField("0.0433", 8);
+        JTextField iterationsField = new JTextField("10", 8);
+
+        JRadioButton rlRadio = new JRadioButton(ALGO_RL, true);
+        JRadioButton lwRadio = new JRadioButton(ALGO_LW, false);
+        ButtonGroup algorithmGroup = new ButtonGroup();
+        algorithmGroup.add(rlRadio);
+        algorithmGroup.add(lwRadio);
+
+        JCheckBox showPsfCheckBox = new JCheckBox("Output theoretical PSF image");
+
+        // recA: Optical parameters
+        JPanel opticalPanel = createGroupPanel("Optical parameters");
+        addLabeledFieldRow(opticalPanel, 0, "Excitation wavelength (µm)",
+                exWavelengthField, "exWavelength", dialog);
+        addLabeledFieldRow(opticalPanel, 1, "Numerical aperture (NA)",
+                numericalApertureField, "numericalAperture", dialog);
+        addLabeledFieldRow(opticalPanel, 2, "Pixel size (µm)",
+                pixelSizeField, "pixelSize", dialog);
+        addLabeledFieldRow(opticalPanel, 3, "Iterations",
+                iterationsField, "iterations", dialog);
+
+        // recB: Algorithm selection
+        JPanel algorithmPanel = createGroupPanel("Algorithm selection");
+        addRadioButtonRowWithHelp(algorithmPanel, 0, rlRadio,
+                "richardsonLucy", dialog);
+        addRadioButtonRowWithHelp(algorithmPanel, 1, lwRadio,
+                "acceleratedLandweber", dialog);
+
+        // recC: Output options
+        JPanel outputPanel = createGroupPanel("Output options");
+        addCheckBoxRow(outputPanel, 0, showPsfCheckBox,
+                "showPsf", dialog);
+
+        opticalPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        algorithmPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        outputPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        root.add(opticalPanel);
+        root.add(Box.createVerticalStrut(6));
+        root.add(algorithmPanel);
+        root.add(Box.createVerticalStrut(6));
+        root.add(outputPanel);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton okButton = new JButton("OK");
+        JButton cancelButton = new JButton("Cancel");
+        buttonPanel.add(okButton);
+        buttonPanel.add(cancelButton);
+        root.add(buttonPanel);
+
+        final Parameters[] result = new Parameters[1];
+
+        okButton.addActionListener(e -> {
+            Parameters p = new Parameters();
+            p.exWavelength = parseDouble(exWavelengthField, 0.561);
+            p.numericalAperture = parseDouble(numericalApertureField, 1.49);
+            p.pixelSize = parseDouble(pixelSizeField, 0.0433);
+            p.iterations = Math.max(1, (int) Math.round(
+                    parseDouble(iterationsField, 10.0)));
+            p.algorithmRule = rlRadio.isSelected() ? 1 : 2;
+            p.showPsf = showPsfCheckBox.isSelected();
+            result[0] = p;
+            dialog.dispose();
+        });
+
+        cancelButton.addActionListener(e -> dialog.dispose());
+
+        dialog.getContentPane().add(root);
+        dialog.pack();
+        dialog.setLocationRelativeTo(null);
+        dialog.setVisible(true);
+
+        return result[0];
+    }
+
+    /** Creates a group panel with a subtle gray border and title. */
+    private JPanel createGroupPanel(String title) {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(GROUP_BORDER_COLOR, 1, true),
+                title,
+                TitledBorder.LEFT,
+                TitledBorder.ABOVE_TOP,
+                new Font(Font.SANS_SERIF, Font.BOLD, 12),
+                new Color(70, 70, 70)));
+        return panel;
+    }
+
+    /** Adds one row: label, field, and blue help button. */
+    private void addLabeledFieldRow(JPanel panel, int row, String labelText,
+                                    JComponent field, String topic, JDialog dialog) {
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(2, 4, 2, 4);
+        g.anchor = GridBagConstraints.WEST;
+        g.fill = GridBagConstraints.NONE;
+        g.gridy = row;
+
+        g.gridx = 0;
+        panel.add(new JLabel(labelText), g);
+
+        g.gridx = 1;
+        panel.add(field, g);
+
+        g.gridx = 2;
+        panel.add(makeHelpButton(topic, dialog), g);
+    }
+
+    /** Adds a radio button row with its own help button. */
+    private void addRadioButtonRowWithHelp(JPanel panel, int row,
+                                           JRadioButton radioButton,
+                                           String topic, JDialog dialog) {
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(2, 4, 2, 4);
+        g.anchor = GridBagConstraints.WEST;
+        g.fill = GridBagConstraints.NONE;
+        g.gridy = row;
+
+        g.gridx = 0;
+        g.gridwidth = 2;   // radio button spans label and field columns
+        panel.add(radioButton, g);
+
+        g.gridx = 2;
+        g.gridwidth = 1;
+        panel.add(makeHelpButton(topic, dialog), g);
+    }
+
+    /** Adds one checkbox row with its own help button. */
+    private void addCheckBoxRow(JPanel panel, int row, JCheckBox checkBox,
+                                String topic, JDialog dialog) {
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(2, 4, 2, 4);
+        g.anchor = GridBagConstraints.WEST;
+        g.fill = GridBagConstraints.NONE;
+        g.gridy = row;
+
+        g.gridx = 0;
+        g.gridwidth = 2;
+        panel.add(checkBox, g);
+
+        g.gridx = 2;
+        g.gridwidth = 1;
+        panel.add(makeHelpButton(topic, dialog), g);
+    }
+
+    /** ThunderSTORM-style small blue "?" button. */
+    private JButton makeHelpButton(String topic, JDialog dialog) {
+        JButton button = new JButton("?");
+        button.setForeground(Color.BLACK);
+        button.setBackground(HELP_BUTTON_BLUE);
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        button.setMargin(new Insets(2, 8, 2, 8));
+        button.addActionListener((ActionEvent e) ->
+                HelpBrowser.show(dialog, HELP, topic));
+        return button;
+    }
+
+    private static double parseDouble(JTextField field, double defaultValue) {
+        try {
+            return Double.parseDouble(field.getText().trim());
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    //  Algorithm pipeline (unchanged except renamed variables)
+    // ------------------------------------------------------------------
+
     private ImagePlus processSingleFrame(ImagePlus imp, double[][] psf,
                                          int iteration, int rule, String suffix) {
         ImageProcessor ip = imp.getProcessor();
@@ -110,7 +325,6 @@ public class Deconvolution_Plugin implements PlugIn {
         return createResultImage(normalized, imp.getTitle(), w, h, suffix);
     }
 
-    // --- Stack processing ---
     private ImagePlus processAllFrames(ImagePlus imp, double[][] psf,
                                        int iteration, int rule, String suffix) {
         int w = imp.getWidth();
@@ -148,8 +362,8 @@ public class Deconvolution_Plugin implements PlugIn {
         return new ImagePlus(newTitle, resultStack);
     }
 
-    // --- Display PSF as separate 16-bit image ---
-    private void displayPSF(double[][] psf, double lambda, double NA, double pixel) {
+    private void displayPSF(double[][] psf, double exWavelength,
+                            double numericalAperture, double pixelSize) {
         int h = psf.length;
         int w = psf[0].length;
 
@@ -163,7 +377,6 @@ public class Deconvolution_Plugin implements PlugIn {
         short[] pixels = new short[w * h];
         for (int j = 0; j < h; j++) {
             for (int i = 0; i < w; i++) {
-//                int val = (int) Math.round(psf[j][i] / maxPsf * 65535);
                 int val = (int) Math.round(psf[j][i] * 65535);
                 pixels[j * w + i] = (short) Math.max(0, Math.min(65535, val));
             }
@@ -173,7 +386,7 @@ public class Deconvolution_Plugin implements PlugIn {
         sp.setPixels(pixels);
 
         String title = String.format("PSF_NA_%.2f_lambda_%.3fum_pixel_%.4fum.tif",
-                NA, lambda, pixel);
+                numericalAperture, exWavelength, pixelSize);
         new ImagePlus(title, sp).show();
     }
 

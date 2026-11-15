@@ -5,20 +5,23 @@ import org.DenoiseStorm.htvdenoise.math.IterativeShrinkage;
 
 public class SparseHessianCore {
 
-    // Newly added return result class, including the processed image and whether it meets the ZeroPercent standard.
+    // Return result class, including the processed image, whether it meets the
+    // ZeroPercent standard, and the actual ZeroPercent value of the returned image.
     public static class ProcessResult {
         public float[][] image;
         public boolean zeroPercentReached;
+        public float zeroPercentValue;
 
-        public ProcessResult(float[][] image, boolean zeroPercentReached) {
+        public ProcessResult(float[][] image, boolean zeroPercentReached, float zeroPercentValue) {
             this.image = image;
             this.zeroPercentReached = zeroPercentReached;
+            this.zeroPercentValue = zeroPercentValue;
         }
     }
 
     // Main processing method: New parameters "useZeroPercent" and "zeroPercent" have been added.
-    public static ProcessResult process(float[][] f, float fidelity, float hess, float paral1,
-                                        float mu, int maxIter, int boost, float rel,
+    public static ProcessResult process(float[][] f, float fidelity, float hessian, float sparsity,
+                                        float mu, int maxIter, int stable, float relChange,
                                         boolean useZeroPercent, float zeroPercent) {
         int h = f.length;
         int w = f[0].length;
@@ -49,18 +52,19 @@ public class SparseHessianCore {
 
         float[][] denom = new float[h][w];// denominator
         float fidelityOverMu = fidelity / mu;
-        float p1Sq = paral1 * paral1;
+        float p1Sq = sparsity * sparsity;
 
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                denom[y][x] = fidelityOverMu + p1Sq + hess * xxFFT[y][x] + hess * yyFFT[y][x] + 2 * hess * xyFFT[y][x];
+                denom[y][x] = fidelityOverMu + p1Sq + xxFFT[y][x] + yyFFT[y][x] + 2  * xyFFT[y][x];
             }
         }
 
         // main loop
         boolean converged = false;
         boolean zeroPercentReached = false;
-        float near_rel = 3 * rel;
+        float near_rel = 3 * relChange;
+        float actualZeroPercent = 0.0f;
 
         for (int iter = 0; iter < maxIter; iter++) {
             prevG = g;
@@ -69,19 +73,19 @@ public class SparseHessianCore {
             float[][] gUpdate = FFTOps.multiply(fNorm, fidelityOverMu);
 
             // Iterative update
-            IterativeShrinkage.IterResult xxRes = IterativeShrinkage.iterXX(g, bxx, 1.0f, mu);
+            IterativeShrinkage.IterResult xxRes = IterativeShrinkage.iterXX(g, bxx, hessian, 1.0f, mu);
             bxx = xxRes.b;
             gUpdate = FFTOps.add(gUpdate, xxRes.L);
 
-            IterativeShrinkage.IterResult yyRes = IterativeShrinkage.iterYY(g, byy, 1.0f, mu);
+            IterativeShrinkage.IterResult yyRes = IterativeShrinkage.iterYY(g, byy, hessian, 1.0f, mu);
             byy = yyRes.b;
             gUpdate = FFTOps.add(gUpdate, yyRes.L);
 
-            IterativeShrinkage.IterResult xyRes = IterativeShrinkage.iterXY(g, bxy, 2.0f, mu);
+            IterativeShrinkage.IterResult xyRes = IterativeShrinkage.iterXY(g, bxy, hessian, 2.0f, mu);
             bxy = xyRes.b;
             gUpdate = FFTOps.add(gUpdate, xyRes.L);
 
-            IterativeShrinkage.IterResult spRes = IterativeShrinkage.iterSparse(g, bl1, paral1, boost, mu);
+            IterativeShrinkage.IterResult spRes = IterativeShrinkage.iterSparse(g, bl1, sparsity, stable, mu);
             bl1 = spRes.b;
             gUpdate = FFTOps.add(gUpdate, spRes.L);
 
@@ -93,7 +97,7 @@ public class SparseHessianCore {
                 float diff = FFTOps.norm(FFTOps.subtract(g, prevG)) / (FFTOps.norm(prevG) + 1e-10f);
 
                 if (diff < near_rel) {
-                    boost = 0;
+                    stable = 1;
                 }
 
                 // Prioritize the inspection of the ZeroPercent convergence criterion
@@ -102,28 +106,30 @@ public class SparseHessianCore {
                     float[][] finalG = postProcess(g, recordMax);
 
                     // Check the pixel ratios of 0, 1, and 2 in whole image.
-                    zeroPercentReached = checkZeroPercent(finalG, zeroPercent);
+                    actualZeroPercent = computeZeroPercent(finalG);
+                    zeroPercentReached = actualZeroPercent >= zeroPercent;
                     if (zeroPercentReached) {
                         converged = true;
                         break;
                     }
                 }
                 // If ZeroPercent is not used or the condition is not met, then check the convergence criteria related to the relative change.
-                else if (diff < rel) {
+                else if (diff < relChange) {
                     converged = true;
                     break;
                 }
             }
         }
 
-        if (!converged) {
-            System.out.println("Reached maximum iteration (" + maxIter + ").");
-        }
+//        if (!converged) {
+//            System.out.println("Reached maximum iteration (" + maxIter + ").");
+//        }
 
         // Final post-processing
         float[][] finalG = postProcess(g, recordMax);
+        actualZeroPercent = computeZeroPercent(finalG);
 
-        return new ProcessResult(finalG, zeroPercentReached);
+        return new ProcessResult(finalG, zeroPercentReached, actualZeroPercent);
     }
 
     // Post-processing methods: truncation, normalization, inverse normalization
@@ -162,8 +168,8 @@ public class SparseHessianCore {
         return finalG;
     }
 
-    // Check the ZeroPercent convergence criterion
-    private static boolean checkZeroPercent(float[][] finalG, float zeroPercent) {
+    // Compute the fraction of background-like pixels (rounded to 0, 1 or 2).
+    private static float computeZeroPercent(float[][] finalG) {
         int h = finalG.length;
         int w = finalG[0].length;
         int pixelNum = h * w;
@@ -182,7 +188,6 @@ public class SparseHessianCore {
             }
         }
 
-        float threshold = (count0 + count1 + count2) / (float) pixelNum;
-        return threshold >= zeroPercent;
+        return (count0 + count1 + count2) / (float) pixelNum;
     }
 }

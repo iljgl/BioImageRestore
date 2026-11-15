@@ -8,20 +8,22 @@ import org.DenoiseStorm.tvgf.math.FFTGradient;
 
 public class TVGFCore {
     private static final double ROF_THETA=25.0;
-    public static double[][] process(double[][] G, int s0WinSize, int staticWinSize, double lambda , boolean IfDenoise) {
+    public static double[][] process(double[][] G, int s0WinSize, int staticWinSize, double α , boolean IfDenoise) {
         int h = G.length;
         int w = G[0].length;
 
         // --- Step 1: Calculate the initial S0 (quarter-window) ---
+        // At this point, G remains original input, with the necessary statistical information included.
         double[][] S0LT = calculateInitialS0LeftTop(G, s0WinSize, s0WinSize);
 
         // --- Step 2: Offset Correction (Corresponding to the S0LT1 calculation in Matlab) ---
-        double[][] S0 = shiftS0(S0LT, s0WinSize);
+        double[][] S0 = shiftS0(S0LT, s0WinSize);// the necessary statistical information included in S0;
         // --- step 2.5: ROF denoise to get the guided image
         if (IfDenoise){
+            // G is no longer the original input. It is a guidance graph that is noise-free and lacks statistical information.
             G = rofDenoise(G,G[0].length,G.length,ROF_THETA);}
         // --- Step 3: Eliminate scattering by TVGF ---
-        return TVGFRemoveScattering(G, S0, staticWinSize, lambda);
+        return TVGFRemoveScattering(G, S0, staticWinSize, α);
     }
 
     // --- step 2.5
@@ -174,7 +176,7 @@ public class TVGFCore {
     }
 
     // --- TVGFRemoveScattering=TVGF_Dehaze ---
-    private static double[][] TVGFRemoveScattering(double[][] G, double[][] S0, int WinSize, double lambda) {
+    private static double[][] TVGFRemoveScattering(double[][] G, double[][] S0, int WinSize, double α) {
         int h = G.length;
         int w = G[0].length;
         int halfWin = WinSize / 2;
@@ -232,7 +234,7 @@ public class TVGFCore {
                 double covGS = sumOfProducts(centG, centS0) / currentN;
 
                 // Soft threshold T
-                double T = lambda * meanGrad;
+                double T = α * meanGrad;
 
                 // a_xy
                 double a_xy;

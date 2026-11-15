@@ -2,7 +2,7 @@ package org.DenoiseStorm.htvdenoise.math;
 
 /**
  * Refine the contraction threshold tool class, corresponding to the 4 iter_* core iterative functions in MATLAB
- * Implement the ADMM iterative update for the Hessian regularization term and the L1 sparse regularization term
+ * Implement the ADMM iterative update for the β regularization term and the L1 sparse regularization term
  */
 
 //Note: In Java, the default initial value for basic data types is generally 0.False,\u0000=0 or \uffff=65535
@@ -23,14 +23,14 @@ public class IterativeShrinkage {
 
     // ------------------------------ Core iterative function ------------------------------
     /**
-     * Second-order derivative iteration in the xx direction (Hessian term), corresponding to MATLAB's iter_xx
+     * Second-order derivative iteration in the xx direction (β term), corresponding to MATLAB's iter_xx
      * @param g The current iteration image
      * @param bxx The dual variable from the previous iteration
      * @param para The weight of the regularization term, originally fixed at 1
      * @param mu The penalty parameter, originally set to 1
      * @return The iteration result Lxx and the updated bxx
      */
-    public static IterResult iterXX(float[][] g, float[][] bxx, float para, float mu) {
+    public static IterResult iterXX(float[][] g, float[][] bxx, float hessian, float para, float mu) {
         int h = g.length;
         int w = g[0].length;
 
@@ -40,7 +40,7 @@ public class IterativeShrinkage {
 
         // soft threshold shrinkage:signdxx = sign(gxx+bxx) * max(|gxx+bxx| - 1/mu, 0)
         float[][] dxx = new float[h][w];
-        float threshold = 1.0f / mu;
+        float threshold = hessian / mu;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 float z = gxx[y][x] + bxx[y][x];
@@ -81,14 +81,14 @@ public class IterativeShrinkage {
     }
 
     /**
-     * Second-order derivative iteration in the yy direction (Hessian term), corresponding to MATLAB's iter_yy
+     * Second-order derivative iteration in the yy direction (β term), corresponding to MATLAB's iter_yy
      * @param g The current iteration image
      * @param byy The dual variable from the previous iteration
      * @param para The regularization term weight, originally fixed at 1
      * @param mu The penalty parameter, originally set to 1
      * @return The iteration result Lyy and the updated byy
      */
-    public static IterResult iterYY(float[][] g, float[][] byy, float para, float mu) {
+    public static IterResult iterYY(float[][] g, float[][] byy, float hessian, float para, float mu) {
         int h = g.length;
         int w = g[0].length;
 
@@ -98,7 +98,7 @@ public class IterativeShrinkage {
 
         // soft threshold shrinkage
         float[][] dyy = new float[h][w];
-        float threshold = 1.0f / mu;
+        float threshold = hessian / mu;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 float z = gyy[y][x] + byy[y][x];
@@ -138,14 +138,14 @@ public class IterativeShrinkage {
     }
 
     /**
-     * Two-order derivative iteration in the xy direction (Hessian term), corresponding to MATLAB's iter_xy
+     * Two-order derivative iteration in the xy direction (β term), corresponding to MATLAB's iter_xy
      * @param g The current iteration image
      * @param bxy The dual variable from the previous iteration
      * @param para The weight of the regularization term, originally fixed at 2
      * @param mu The penalty parameter, originally set to 1
      * @return The iteration result Lxy and the updated bxy
      */
-    public static IterResult iterXY(float[][] g, float[][] bxy, float para, float mu) {
+    public static IterResult iterXY(float[][] g, float[][] bxy, float hessian, float para, float mu) {
         int h = g.length;
         int w = g[0].length;
 
@@ -155,7 +155,7 @@ public class IterativeShrinkage {
 
         // soft threshold shrinkage
         float[][] dxy = new float[h][w];
-        float threshold = 1.0f / mu;
+        float threshold = hessian / mu;
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 float z = gxy[y][x] + bxy[y][x];
@@ -198,18 +198,18 @@ public class IterativeShrinkage {
      Sparse term iteration (L1 regularization), corresponding to MATLAB's iter_sparse
      * @param g The current iteration image
      * @param bsparse The dual variable from the previous iteration
-     * @param para The weight of the sparse term paral1
-     * @param boost Acceleration mode: 0 = off, 1 = on
+     * @param para The weight of the sparse term sparsity
+     * @param stable Acceleration mode: 0 = off, 1 = on
      * @param mu Penalty parameter, default value in the original code is 1
      * @return Iteration result Lsparse and updated bsparse
      */
-    public static IterResult iterSparse(float[][] g, float[][] bsparse, float para, int boost, float mu) {
+    public static IterResult iterSparse(float[][] g, float[][] bsparse, float para, int stable, float mu) {
         int h = g.length;
         int w = g[0].length;
 
-        // dealing the boost mode
+        // dealing the stable mode
         float[][] gsparse;
-        if (boost == 1) {
+        if (stable == 0) {
             gsparse = multiply(g, para);
         } else {
             gsparse = copy(g);
@@ -250,16 +250,16 @@ public class IterativeShrinkage {
     }
 
     // ------------------------------ Overloaded methods (default parameters) ------------------------------
-    public static IterResult iterXX(float[][] g, float[][] bxx) {
-        return iterXX(g, bxx, 1.0f, 1.0f);
+    public static IterResult iterXX(float[][] g, float[][] bxx, float hessian) {
+        return iterXX(g, bxx, hessian,1.0f, 1.0f );
     }
 
-    public static IterResult iterYY(float[][] g, float[][] byy) {
-        return iterYY(g, byy, 1.0f, 1.0f);
+    public static IterResult iterYY(float[][] g, float[][] byy, float hessian) {
+        return iterYY(g, byy, hessian, 1.0f, 1.0f);
     }
 
-    public static IterResult iterXY(float[][] g, float[][] bxy) {
-        return iterXY(g, bxy, 2.0f, 1.0f);
+    public static IterResult iterXY(float[][] g, float[][] bxy, float hessian) {
+        return iterXY(g, bxy, hessian, 2.0f, 1.0f);
     }
 
     public static IterResult iterSparse(float[][] g, float[][] bsparse, float para) {

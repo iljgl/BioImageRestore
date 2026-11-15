@@ -11,13 +11,13 @@ public class PSFGenerator {
     /**
      * Generate normalized PSF.
      * @param pixel pixel size in micrometers
-     * @param lambda emission wavelength in micrometers
+     * @param α emission wavelength in micrometers
      * @param NA numerical aperture
      * @param z defocus distance in micrometers (0 = focal plane)
      * @param rCutoff radial cutoff in micrometers
      * @return normalized 2D PSF (sum = 1)
      */
-    public static double[][] generate(double pixel, double lambda, double NA,
+    public static double[][] generate(double pixel, double α, double NA,
                                       double z, double rCutoff) {
         // Compute half-size of PSF grid in pixels
 //        int nn = (int) Math.ceil(rCutoff / pixel) + 1;
@@ -25,7 +25,7 @@ public class PSFGenerator {
         int size = 2 * nn + 1;
 
         double sin2 = NA * NA / 2.0;
-        double u = 8 * Math.PI * z * sin2 / lambda;
+        double u = 8 * Math.PI * z * sin2 / α;
 
         double[][] IP = new double[size][size];
 
@@ -38,7 +38,7 @@ public class PSFGenerator {
                 if (r > rCutoff) {
                     IP[j][i] = 0;
                 } else {
-                    IP[j][i] = integrateRadial(r, NA, lambda, u);
+                    IP[j][i] = integrateRadial(r, NA, α, u);
                 }
             }
         }
@@ -65,11 +65,11 @@ public class PSFGenerator {
 
     /**
      * Integrate h(r, p) over p in [0, 1] using Simpson's rule.
-     * h(r,p) = 2 * exp(i*u*p^2/2) * besselj(0, 2*pi*r*NA/lambda * p)
+     * h(r,p) = 2 * exp(i*u*p^2/2) * besselj(0, 2*pi*r*NA/α * p)
      * Returns the real magnitude of the integral result.
      */
-    private static double integrateRadial(double r, double NA, double lambda, double u) {
-        double k = 2 * Math.PI * r * NA / lambda;
+    private static double integrateRadial(double r, double NA, double α, double u) {
+        double k = 2 * Math.PI * r * NA / α;
         double halfU = u / 2.0;
 
         int n = INTEGRATION_POINTS;
