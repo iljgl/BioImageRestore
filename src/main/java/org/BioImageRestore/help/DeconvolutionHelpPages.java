@@ -6,7 +6,8 @@ package org.BioImageRestore.help;
  * <p>The help pages cover:
  * <ul>
  *   <li>Optical parameters (excitation wavelength, NA, pixel size, iterations)</li>
- *   <li>Choice of deconvolution algorithm (Richardson-Lucy vs. Accelerated Landweber)</li>
+ *   <li>PSF theory (scalar Debye approximation)</li>
+ *   <li>Choice of deconvolution algorithm (Richardson‑Lucy vs. Accelerated Landweber)</li>
  *   <li>Optional output of the theoretical PSF image</li>
  * </ul>
  *
@@ -40,6 +41,8 @@ public class DeconvolutionHelpPages implements HelpPages {
                 return page("Pixel size", bodyPixelSize());
             case "iterations":
                 return page("Iterations", bodyIterations());
+            case "psfTheory":
+                return page("PSF theory", bodyPsfTheory());
             case "richardsonLucy":
                 return page("Richardson-Lucy (Poisson)", bodyRichardsonLucy());
             case "acceleratedLandweber":
@@ -100,8 +103,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "theoretical point spread function (PSF), because diffraction "
                 + "depends on wavelength.</p>"
                 + seeAlso("numericalAperture|Numerical aperture",
-                "pixelSize|Pixel size",
-                "iterations|Iterations");
+                        "pixelSize|Pixel size",
+                        "iterations|Iterations",
+                        "psfTheory|PSF theory");
     }
 
     private String bodyNumericalAperture() {
@@ -113,8 +117,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "<p>The NA is normally printed on the side of the objective. "
                 + "This value is needed to compute the theoretical PSF for deconvolution.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                "pixelSize|Pixel size",
-                "iterations|Iterations");
+                        "pixelSize|Pixel size",
+                        "iterations|Iterations",
+                        "psfTheory|PSF theory");
     }
 
     private String bodyPixelSize() {
@@ -127,8 +132,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "magnification gives 6.5 / 150 &asymp; 0.0433 &micro;m per pixel.</p>"
                 + "<p>This value allows the PSF to be correctly sampled onto the image grid.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                "numericalAperture|Numerical aperture",
-                "iterations|Iterations");
+                        "numericalAperture|Numerical aperture",
+                        "iterations|Iterations",
+                        "psfTheory|PSF theory");
     }
 
     private String bodyIterations() {
@@ -143,9 +149,68 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "<p>The default of 10 iterations is a reasonable starting point for "
                 + "most images. You may need to increase it if the image is heavily "
                 + "blurred, or decrease it if noise becomes objectionable.</p>"
+                + "<p>The iteration number does <b>not</b> affect the PSF itself; it "
+                + "only determines how many times the deconvolution algorithm uses the "
+                + "PSF to refine the estimate.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                "numericalAperture|Numerical aperture",
-                "pixelSize|Pixel size");
+                        "numericalAperture|Numerical aperture",
+                        "pixelSize|Pixel size",
+                        "psfTheory|PSF theory");
+    }
+
+    // ---------- New page: PSF theory ----------
+
+    private String bodyPsfTheory() {
+        return "<p>The <b>theoretical point spread function (PSF)</b> used by this "
+                + "plugin is computed with the <b>scalar Debye approximation</b>, a "
+                + "classical model that describes how light from a point source is "
+                + "diffracted and focused by an objective lens.</p>"
+                + "<p>In this approximation, the amplitude of the light field at a point "
+                + "(r, z) in the image plane (with r the radial distance from the optical "
+                + "axis and z the defocus distance) is given by an integral involving a "
+                + "<b>Bessel function</b>:</p>"
+                + "<div class='formula'>"
+                + "A(r, z) &prop; &int;<sub>0</sub><sup>1</sup> "
+                + "J<sub>0</sub>(2&pi; r NA / &lambda;<sub>ex</sub> &middot; &rho;) "
+                + "&middot; exp(i &middot; 2&pi; z NA&sup2; / &lambda;<sub>ex</sub> &middot; &rho;&sup2;) "
+                + "&rho; d&rho;"
+                + "</div>"
+                + "<p>The PSF intensity is then the squared magnitude of this amplitude:</p>"
+                + "<div class='formula'>PSF(r, z) = |A(r, z)|&sup2;</div>"
+                + "<p>In this formula:</p>"
+                + "<ul>"
+                + "<li><b>&lambda;<sub>ex</sub></b> – excitation wavelength (&micro;m)</li>"
+                + "<li><b>NA</b> – numerical aperture of the objective</li>"
+                + "<li><b>&rho;</b> – a dimensionless integration variable</li>"
+                + "</ul>"
+                + "<p>The <b>pixel size</b> is not part of the physical PSF formula, but "
+                + "it is used to convert distances from micrometers to pixels when the "
+                + "continuous PSF is sampled onto the discrete image grid. In practice, "
+                + "the PSF is computed on a grid with a size of 129&times;129 pixels, "
+                + "centered on the origin.</p>"
+                + "<p>Because this is a purely theoretical PSF, it does not account for "
+                + "aberrations, refractive index mismatch, or other experimental "
+                + "imperfections. It serves as a reasonable starting point when a "
+                + "measured PSF is not available.</p>"
+                + "<p><b>Why is the iteration number irrelevant for the PSF?</b> The "
+                + "PSF is calculated once from the optical parameters and then used "
+                + "repeatedly by the deconvolution algorithm. Changing the number of "
+                + "iterations only affects how many times the algorithm refines its "
+                + "estimate, not the PSF itself.</p>"
+                + seeAlso("exWavelength|Excitation wavelength",
+                        "numericalAperture|Numerical aperture",
+                        "pixelSize|Pixel size",
+                        "iterations|Iterations")
+                + references("<a href='https://doi.org/10.1017/CBO9781139644181'>"
+                        + "Born, M., & Wolf, E. (1999). Principles of Optics: "
+                        + "Electromagnetic Theory of Propagation, Interference and "
+                        + "Diffraction of Light (7th ed.). Cambridge University Press.</a>",
+                        "<a href='https://doi.org/10.1098/rspa.1959.0200'>"
+                        + "Richards, B., & Wolf, E. (1959). Electromagnetic diffraction "
+                        + "in optical systems. II. Structure of the image field in an "
+                        + "aplanatic system. Proceedings of the Royal Society of London. "
+                        + "Series A. Mathematical and Physical Sciences, 253(1274), "
+                        + "358–379.</a>");
     }
 
     // ---------- recB: Algorithm pages ----------
@@ -167,7 +232,7 @@ public class DeconvolutionHelpPages implements HelpPages {
                         + "Richardson, W. H. (1972). Bayesian-based iterative method of "
                         + "image restoration. Journal of the Optical Society of America, "
                         + "62(1), 55–59.</a>",
-                "<a href='https://doi.org/10.1086/111605'>"
+                        "<a href='https://doi.org/10.1086/111605'>"
                         + "Lucy, L. B. (1974). An iterative technique for the rectification "
                         + "of observed distributions. The Astronomical Journal, 79, 745–754.</a>");
     }
