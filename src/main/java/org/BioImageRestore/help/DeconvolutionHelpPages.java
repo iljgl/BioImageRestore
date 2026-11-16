@@ -103,9 +103,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "theoretical point spread function (PSF), because diffraction "
                 + "depends on wavelength.</p>"
                 + seeAlso("numericalAperture|Numerical aperture",
-                        "pixelSize|Pixel size",
-                        "iterations|Iterations",
-                        "psfTheory|PSF theory");
+                "pixelSize|Pixel size",
+                "iterations|Iterations",
+                "psfTheory|PSF theory");
     }
 
     private String bodyNumericalAperture() {
@@ -117,9 +117,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "<p>The NA is normally printed on the side of the objective. "
                 + "This value is needed to compute the theoretical PSF for deconvolution.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                        "pixelSize|Pixel size",
-                        "iterations|Iterations",
-                        "psfTheory|PSF theory");
+                "pixelSize|Pixel size",
+                "iterations|Iterations",
+                "psfTheory|PSF theory");
     }
 
     private String bodyPixelSize() {
@@ -132,9 +132,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "magnification gives 6.5 / 150 &asymp; 0.0433 &micro;m per pixel.</p>"
                 + "<p>This value allows the PSF to be correctly sampled onto the image grid.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                        "numericalAperture|Numerical aperture",
-                        "iterations|Iterations",
-                        "psfTheory|PSF theory");
+                "numericalAperture|Numerical aperture",
+                "iterations|Iterations",
+                "psfTheory|PSF theory");
     }
 
     private String bodyIterations() {
@@ -153,9 +153,9 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "only determines how many times the deconvolution algorithm uses the "
                 + "PSF to refine the estimate.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                        "numericalAperture|Numerical aperture",
-                        "pixelSize|Pixel size",
-                        "psfTheory|PSF theory");
+                "numericalAperture|Numerical aperture",
+                "pixelSize|Pixel size",
+                "psfTheory|PSF theory");
     }
 
     // ---------- New page: PSF theory ----------
@@ -177,41 +177,43 @@ public class DeconvolutionHelpPages implements HelpPages {
                 + "</div>"
                 + "<p>The PSF intensity is then the squared magnitude of this amplitude:</p>"
                 + "<div class='formula'>PSF(r, z) = |A(r, z)|&sup2;</div>"
-                + "<p>In this formula:</p>"
+                + "<p><b>Parameters you provide</b></p>"
                 + "<ul>"
-                + "<li><b>&lambda;<sub>ex</sub></b> – excitation wavelength (&micro;m)</li>"
-                + "<li><b>NA</b> – numerical aperture of the objective</li>"
-                + "<li><b>&rho;</b> – a dimensionless integration variable</li>"
+                + "<li><b>&lambda;<sub>ex</sub></b> &ndash; excitation wavelength (&micro;m)</li>"
+                + "<li><b>NA</b> &ndash; numerical aperture of the objective</li>"
+                + "<li><b>pixel size</b> &ndash; &micro;m per pixel, used to convert "
+                + "distances from micrometers to pixels when the continuous PSF is "
+                + "sampled onto the discrete image grid</li>"
                 + "</ul>"
-                + "<p>The <b>pixel size</b> is not part of the physical PSF formula, but "
-                + "it is used to convert distances from micrometers to pixels when the "
-                + "continuous PSF is sampled onto the discrete image grid. In practice, "
-                + "the PSF is computed on a grid with a size of 129&times;129 pixels, "
-                + "centered on the origin.</p>"
+                + "<p><b>Internal quantities (no user input required)</b></p>"
+                + "<ul>"
+                + "<li><b>&rho;</b> &ndash; a dimensionless dummy variable of "
+                + "integration, the normalized pupil radius (0 at the optical axis, 1 at "
+                + "the aperture edge). It is integrated numerically over the fixed "
+                + "interval [0, 1] and is not a setting.</li>"
+                + "<li>The PSF is sampled on a 129&times;129 pixel grid centered on the "
+                + "origin; the pixel size enters only through this sampling, not through "
+                + "the physical formula itself.</li>"
+                + "</ul>"
                 + "<p>Because this is a purely theoretical PSF, it does not account for "
                 + "aberrations, refractive index mismatch, or other experimental "
                 + "imperfections. It serves as a reasonable starting point when a "
                 + "measured PSF is not available.</p>"
-                + "<p><b>Why is the iteration number irrelevant for the PSF?</b> The "
-                + "PSF is calculated once from the optical parameters and then used "
-                + "repeatedly by the deconvolution algorithm. Changing the number of "
-                + "iterations only affects how many times the algorithm refines its "
-                + "estimate, not the PSF itself.</p>"
                 + seeAlso("exWavelength|Excitation wavelength",
-                        "numericalAperture|Numerical aperture",
-                        "pixelSize|Pixel size",
-                        "iterations|Iterations")
+                "numericalAperture|Numerical aperture",
+                "pixelSize|Pixel size")
                 + references("<a href='https://doi.org/10.1017/CBO9781139644181'>"
                         + "Born, M., & Wolf, E. (1999). Principles of Optics: "
                         + "Electromagnetic Theory of Propagation, Interference and "
                         + "Diffraction of Light (7th ed.). Cambridge University Press.</a>",
-                        "<a href='https://doi.org/10.1098/rspa.1959.0200'>"
+                "<a href='https://doi.org/10.1098/rspa.1959.0200'>"
                         + "Richards, B., & Wolf, E. (1959). Electromagnetic diffraction "
                         + "in optical systems. II. Structure of the image field in an "
                         + "aplanatic system. Proceedings of the Royal Society of London. "
                         + "Series A. Mathematical and Physical Sciences, 253(1274), "
-                        + "358–379.</a>");
+                        + "358&ndash;379.</a>");
     }
+
 
     // ---------- recB: Algorithm pages ----------
 
@@ -232,7 +234,7 @@ public class DeconvolutionHelpPages implements HelpPages {
                         + "Richardson, W. H. (1972). Bayesian-based iterative method of "
                         + "image restoration. Journal of the Optical Society of America, "
                         + "62(1), 55–59.</a>",
-                        "<a href='https://doi.org/10.1086/111605'>"
+                "<a href='https://doi.org/10.1086/111605'>"
                         + "Lucy, L. B. (1974). An iterative technique for the rectification "
                         + "of observed distributions. The Astronomical Journal, 79, 745–754.</a>");
     }
